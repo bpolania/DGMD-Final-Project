@@ -63,6 +63,10 @@ globals [
 
   ; Table to keep track of turtles that have been activated.
   ACTIVATED_TURTLES
+
+  ; world length
+  WORLD_EDGE_LENGHT
+
 ]
 
 turtles-own [
@@ -115,6 +119,8 @@ to setup
   ; Clear all previous simulation data.
   ca
 
+  set WORLD_EDGE_LENGHT 25
+
   ; Define the dimensions of the world.
   resize-world 0 WORLD_EDGE_LENGHT 0 WORLD_EDGE_LENGHT
 
@@ -130,11 +136,7 @@ to setup
   set ACTION_RECEIVE_TIME 10
 
   ; Calculate the time required to broadcast an action, based on sensor width.
-  ifelse COM_SENSOR_WIDTH = 1 [
-    set ACTION_BROADCAST_TIME (log SWARM_SIZE 2) / 4
-  ] [
-    set ACTION_BROADCAST_TIME (log SWARM_SIZE COM_SENSOR_WIDTH) / 4
-  ]
+  set ACTION_BROADCAST_TIME (log SWARM_SIZE 10) / 4
 
   ; Set the communication distance based on the world's edge length.
   set COM_DISTANCE (2 * WORLD_EDGE_LENGHT) / 25
@@ -179,6 +181,7 @@ to setup
 
   ; Dirty some random patches (Assuming there's a function to dirty patches).
   dirtPatches
+
 end
 
 
@@ -228,7 +231,7 @@ end
 to step
   ;patches getting dirty again
   ask patches with [not dirty] [
-    ifelse (random-float 1 <= DIRTY_PATCHES_EVERY_STEP_%) [
+    ifelse (random-float 1 <= 0) [
       set pcolor brown
       set dirty true
     ]
@@ -293,11 +296,9 @@ to step
 
       ;calculating how many patches the swarm will clean next step
       let c a * SWARM_DENSITY * d
-      if DEBUG [show (word "this step we will clean " c " patches")]
 
       ;if d is already under the threshold, not acting
       ifelse d < targetThreshold [
-        if DEBUG [show (word "not acting deterministically")]
         set d -1
         set isActionInProgress false
 
@@ -309,21 +310,16 @@ to step
         ;if d is above the threshold and the swarm won't clean enought patches to get to it, acting
         ifelse d - c > targetThreshold [
           set d (d - c)
-          if DEBUG [show (word "acting deterministically and setting d to " d)]
         ]
         [
           ;if we the swarm would clean until under the threshold, cleaning with a probability of (d - targetThreshold) / c
           let cleaningProb random-float 1
 
-          if DEBUG [show (word "prob " ((d - targetThreshold) / c))]
-
           ifelse cleaningProb < ((d - targetThreshold) / c)
           [
             set d d - c * ((d - targetThreshold) / c)
-            if DEBUG [show (word "acting probabilistically and setting d to " d)]
           ]
           [
-            if DEBUG [show (word "not acting probabilistically")]
             set d -1
             set isActionInProgress false
 
@@ -407,8 +403,8 @@ to updateVector
 
   ;checking for neighbourhood
   let neighbours nobody
-  ifelse availableNeigh >= COM_SENSOR_WIDTH [
-    set neighbours n-of COM_SENSOR_WIDTH other turtles in-radius COM_DISTANCE
+  ifelse availableNeigh >= 10 [
+    set neighbours n-of 10 other turtles in-radius COM_DISTANCE
   ]
   [
     set neighbours other turtles in-radius COM_DISTANCE
@@ -432,7 +428,7 @@ to updateVector
     ]
   set COM_COUNT COM_COUNT + 1
 
-  if DO_ACTION_FROM_VECTOR and stateCode = 0 [
+  if stateCode = 0 [
     ;check if a change of action is needed
     let vectorAction checkDistKnowledge
     if not vectorAction = isActionInProgress [
@@ -457,9 +453,7 @@ to updateVector
         set inhibitionTimer time
       ]
 
-      if DO_ACTION_BROADCAST [
-        set stateCode 1
-      ]
+      set stateCode 1
     ]
   ]
 end
@@ -483,10 +477,10 @@ to randomWalk
 
   ;updating lastMemoryWrite
   set lastMemoryWrite (lastMemoryWrite + 1)
-  set lastMemoryWrite lastMemoryWrite mod MAX_MEMORY_SIZE
+  set lastMemoryWrite lastMemoryWrite mod 10
 
   ;creating new memory slot if full capacity is not reached
-  if (length memory < MAX_MEMORY_SIZE) [
+  if (length memory < 10) [
     set memory lput false memory
   ]
 
@@ -535,9 +529,6 @@ to-report checkDistKnowledge
   ;distributed belief degree in dirtyness of the world
   let avgBelief (accumulatorNeutral / SWARM_SIZE)
 
-  ;if DEBUG [show avgBelief]
-
-
   ifelse not isActionInProgress [
     ifelse (avgBelief >= DISTRIBUTED_BELIEF_P_THRESHOLD) [
       ;setting d
@@ -557,7 +548,6 @@ to-report checkDistKnowledge
         [
           set d dAcc / table:length distBelief
         ]
-        if DEBUG [show (word "setting d from vector to " d)]
       ]
       report true
     ]
@@ -581,17 +571,15 @@ end
 ;tell neighbours that a change in action state is needed
 to broadcastAction [action]
 
-  if DO_ACTION_BROADCAST [
-
-    ;try to find neighbours
+  ;try to find neighbours
     let neighbours nobody
 
     let availableNeigh count other turtles in-radius COM_DISTANCE
 
     set COM_NEIGHBOURS_SUM COM_NEIGHBOURS_SUM + availableNeigh
 
-    ifelse availableNeigh >= COM_SENSOR_WIDTH [
-      set neighbours n-of COM_SENSOR_WIDTH other turtles in-radius COM_DISTANCE
+    ifelse availableNeigh >= 10 [
+      set neighbours n-of 10 other turtles in-radius COM_DISTANCE
     ]
     [
       set neighbours other turtles in-radius COM_DISTANCE
@@ -616,7 +604,6 @@ to broadcastAction [action]
                 set COUNT_ACTIVATIONS COUNT_ACTIVATIONS + 1
                 ;changing d
                 set d ([d] of myself)
-                if DEBUG [show (word "setting d from neighbour " myself " to " d)]
                 set stateCode 1
               ]
             ]
@@ -638,7 +625,6 @@ to broadcastAction [action]
       set COM_NUMBER_SUM COM_NUMBER_SUM + count neighbours
     ]
     set COM_COUNT COM_COUNT + 1
-  ]
 end
 
 to stepUntilStartAction
@@ -665,8 +651,8 @@ end
 GRAPHICS-WINDOW
 301
 8
-813
-521
+803
+511
 -1
 -1
 19.4
@@ -749,65 +735,6 @@ MONITOR
 1
 10
 
-SWITCH
-1816
-105
-2042
-138
-DO_ACTION_BROADCAST
-DO_ACTION_BROADCAST
-0
-1
--1000
-
-SWITCH
-1813
-157
-2056
-190
-DO_ACTION_FROM_VECTOR
-DO_ACTION_FROM_VECTOR
-0
-1
--1000
-
-MONITOR
-2034
-88
-2095
-133
-TIME
-[time] of turtle 0
-17
-1
-11
-
-MONITOR
-2187
-212
-2303
-257
-Acting turtles %
-(count turtles with [isActionInProgress] / count turtles) * 100
-17
-1
-11
-
-SLIDER
-2115
-335
-2461
-368
-DIRTY_PATCHES_EVERY_STEP_%
-DIRTY_PATCHES_EVERY_STEP_%
-0
-1
-0.0
-0.01
-1
-NIL
-HORIZONTAL
-
 SLIDER
 904
 130
@@ -838,17 +765,6 @@ DISTRIBUTED_BELIEF_NOT_P_THRESHOLD
 NIL
 HORIZONTAL
 
-MONITOR
-897
-710
-1084
-755
-NIL
-NEUTRAL_BELIEF_DEGREE
-17
-1
-11
-
 SLIDER
 903
 57
@@ -865,28 +781,6 @@ turtles per patch
 HORIZONTAL
 
 MONITOR
-2002
-306
-2107
-351
-NIL
-count patches
-17
-1
-11
-
-INPUTBOX
-1800
-296
-1961
-356
-WORLD_EDGE_LENGHT
-25.0
-1
-0
-Number
-
-MONITOR
 164
 205
 261
@@ -896,61 +790,6 @@ SWARM_SIZE
 17
 1
 11
-
-MONITOR
-1994
-499
-2247
-544
-NIL
-maxAgentActivation
-17
-1
-11
-
-MONITOR
-1983
-374
-2121
-419
-AVG_COM_NUMBER
-COM_NUMBER_SUM / COM_COUNT
-17
-1
-11
-
-MONITOR
-2131
-375
-2264
-420
-AVG_NEIGHBOURS
-COM_NEIGHBOURS_SUM / COM_COUNT
-17
-1
-11
-
-MONITOR
-2283
-375
-2441
-420
-NIL
-COM_DISTANCE
-17
-1
-11
-
-SWITCH
-1764
-213
-1870
-246
-DEBUG
-DEBUG
-1
-1
--1000
 
 MONITOR
 27
@@ -964,28 +803,6 @@ Average of known opinions
 10
 
 INPUTBOX
-1800
-367
-1931
-427
-COM_SENSOR_WIDTH
-10.0
-1
-0
-Number
-
-MONITOR
-1995
-550
-2243
-595
-NIL
-COUNT_ACTIVATIONS / count turtles
-17
-1
-11
-
-INPUTBOX
 196
 85
 248
@@ -995,39 +812,6 @@ SLEEP
 1
 0
 Number
-
-MONITOR
-1992
-609
-2180
-654
-Distinct activated turtles %
-table:length ACTIVATED_TURTLES / count turtles
-17
-1
-11
-
-MONITOR
-2262
-530
-2559
-575
-NIL
-COUNT_ACTIVATIONS_STEPS / count turtles
-17
-1
-11
-
-MONITOR
-1933
-182
-2118
-227
-NIL
-ACTION_BROADCAST_TIME
-17
-1
-11
 
 INPUTBOX
 385
@@ -1113,27 +897,6 @@ How does the disparity between the world's perceived dirtiness and the target th
 0.0
 1
 
-INPUTBOX
-1806
-490
-1967
-550
-MAX_MEMORY_SIZE
-10.0
-1
-0
-Number
-
-TEXTBOX
-2037
-452
-2187
-470
-Activation benchmarks\n
-12
-0.0
-1
-
 TEXTBOX
 905
 101
@@ -1144,23 +907,13 @@ Distributed Beliefs
 0.0
 1
 
-TEXTBOX
-1759
-194
-1909
-212
-Debug prints on/off
-12
-0.0
-1
-
 MONITOR
-2030
-23
-2188
-68
-TIME CONSTANTS
-(word \"t0: \" t0 \" t1: \" t1 \" t2: \" t2 \" t3: \" t3)
+897
+710
+1084
+755
+NIL
+NEUTRAL_BELIEF_DEGREE
 17
 1
 11
